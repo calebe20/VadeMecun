@@ -2302,9 +2302,9 @@ body {
     break-after: avoid;
 }
 
-/* Espaço entre os grupos de assuntos. */
+/* Espaço entre os grupos de assuntos (externo à caixa). */
 .note-container {
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     break-inside: auto;
 }
 
@@ -2964,6 +2964,11 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         margin-top: 0 !important;
         padding-top: 0 !important;
     }
+    .estilo-lei > details.pdf-separador-questao {
+        border-top: 1px solid #aaa !important;
+        margin-top: 6px !important;
+        padding-top: 5px !important;
+    }
     """
 
     js = r"""
@@ -3062,12 +3067,32 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         }
     });
 
-    // O primeiro artigo após cada cabeçalho dispensa o separador superior.
-    document.querySelectorAll('.note-container').forEach(secao => {
-        const primeiroArtigo = secao.querySelector(
-            '.estilo-lei > span.pdf-inicio-artigo'
-        );
-        if (primeiroArtigo) primeiroArtigo.classList.add('pdf-primeiro-artigo');
+    // A linha separa itens consecutivos, nunca aparece no topo da caixa.
+    // Artigo que abre a caixa (ou que vem logo após a incidência, que abre
+    // a caixa) não recebe linha. Quando há incidência antes do artigo, a
+    // linha vai para a incidência, para não separar a incidência do artigo.
+    document.querySelectorAll(
+        '.estilo-lei > span.pdf-inicio-artigo'
+    ).forEach(artigo => {
+        let alvo = artigo;
+        let anterior = artigo.previousElementSibling;
+        if (anterior && anterior.matches('.incidencia-dispositivo')) {
+            anterior.classList.add('pdf-inicio-artigo');
+            artigo.classList.remove('pdf-inicio-artigo');
+            alvo = anterior;
+            anterior = anterior.previousElementSibling;
+        }
+        if (!anterior) alvo.classList.add('pdf-primeiro-artigo');
+    });
+
+    // Questão só recebe linha quando vem logo depois de outra questão.
+    document.querySelectorAll(
+        '.estilo-lei > details[data-bloco="questao"]'
+    ).forEach(questao => {
+        const anterior = questao.previousElementSibling;
+        if (anterior && anterior.matches('details[data-bloco="questao"]')) {
+            questao.classList.add('pdf-separador-questao');
+        }
     });
 
     document.querySelectorAll(

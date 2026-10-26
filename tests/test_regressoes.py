@@ -425,6 +425,63 @@ def test_outros_blocos_mantem_so_o_fundo(fmt):
 
 
 # ------------------------------------------------------------------
+# Separadores e espaco externo (spec 0003)
+# ------------------------------------------------------------------
+
+def _html_pdf_com_cartao(fmt, corpo_frente):
+    cartoes = [{'assunto': 'Assunto A', 'frente': corpo_frente,
+                'verso': '', 'capitulo': {}}]
+    return fmt.gerar_html_pdf(cartoes, layout_mode='continuous',
+                              incluir_comentarios=True)
+
+
+def test_separador_questao_tem_regra_propria(fmt):
+    """A linha entre questoes e uma classe propria, nao a dos artigos."""
+    html = _html_pdf_com_cartao(fmt, '')
+    assert '.estilo-lei > details.pdf-separador-questao' in html
+    trecho = html[html.find('.estilo-lei > details.pdf-separador-questao'):]
+    trecho = trecho[:trecho.find('}')]
+    assert 'border-top' in trecho, 'a linha entre questoes perdeu a borda'
+
+
+def test_js_marca_separador_so_entre_questoes(fmt):
+    """A marcacao olha o irmao anterior: so questao depois de questao."""
+    html = _html_pdf_com_cartao(fmt, '')
+    assert "classList.add('pdf-separador-questao')" in html
+    assert "previousElementSibling" in html
+    assert 'details[data-bloco="questao"]' in html
+
+
+def test_js_nao_marca_primeira_questao_da_caixa(fmt):
+    """A primeira questao (sem irmao anterior questao) nao recebe a classe."""
+    html = _html_pdf_com_cartao(fmt, '')
+    inicio = html.find("classList.add('pdf-separador-questao')")
+    assert inicio != -1
+    # A classe so e aplicada dentro do if que confere o irmao anterior.
+    antes = html[max(0, inicio - 200):inicio]
+    assert 'anterior.matches(' in antes, (
+        'a classe da questao precisa depender do irmao anterior'
+    )
+
+
+def test_js_linha_do_artigo_some_no_inicio_da_caixa(fmt):
+    """O primeiro artigo da caixa nao recebe linha, com ou sem incidencia."""
+    html = _html_pdf_com_cartao(fmt, '')
+    assert "classList.add('pdf-primeiro-artigo')" in html
+    # Com incidencia antes do artigo, a linha vai para a incidencia.
+    assert "anterior.matches('.incidencia-dispositivo')" in html
+
+
+def test_espaco_externo_da_caixa_reduzido(fmt):
+    """A margem entre a caixa e a seguinte caiu de 6px para 3px."""
+    css = fmt._PDF_CSS
+    inicio = css.find('.note-container {')
+    assert inicio != -1, 'a regra do note-container sumiu'
+    regra = css[inicio:css.find('}', inicio)]
+    assert 'margin: 0 0 3px;' in regra, regra.strip()
+
+
+# ------------------------------------------------------------------
 # Contrato geral
 # ------------------------------------------------------------------
 
