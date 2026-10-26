@@ -472,6 +472,49 @@ def test_js_marca_a_questao_separada(fmt):
     assert 'data-bloco="questao"' in html
 
 
+def test_js_marca_somente_questao_anterior_igual(fmt):
+    """A divisoria so entra se a questao anterior tambem for questao."""
+    html = fmt.gerar_html_pdf([], 'three', 'T', True, 9, '', 2, 2, 8, 8,
+                              1.0, 1.0, 'capitulo')
+
+    assert 'previousElementSibling' in html
+    assert "anterior.matches(" in html
+
+
+def test_divisoria_interna_entre_questoes_do_mesmo_bloco(fmt):
+    """Duas questoes no mesmo bloco recebem uma linha cada."""
+    html = fmt._render_bloco_tipado(
+        'QUESTAO', '', '(DPERO-2023) Julgue o primeiro item.\n'
+                      '(DPERO-2023) Julgue o segundo item.'
+    )
+
+    assert html.count('class="bloco-linha"') == 2
+
+
+def test_gabarito_fica_na_ultima_questao(fmt):
+    """O gabarito entra no fim da ultima questao, nao de todas."""
+    html = fmt._render_bloco_tipado(
+        'QUESTAO', '', '(DPERO-2023) Julgue o primeiro item.\n'
+                      '(DPERO-2023) Julgue o segundo item.\n'
+                      'RESPOSTA: Certo'
+    )
+
+    linhas = html.split('class="bloco-linha"')[1:]
+    assert len(linhas) == 2
+    assert 'bloco-gabarito' not in linhas[0]
+    assert 'bloco-gabarito' in linhas[1]
+
+
+def test_questao_unica_continua_com_uma_linha(fmt):
+    """Uma questao so nao ganha linha extra nem quebra."""
+    html = fmt._render_bloco_tipado(
+        'QUESTAO', '', 'ENUNCIADO: Julgue o item.\nRESPOSTA: Certo'
+    )
+
+    assert html.count('class="bloco-linha"') == 1
+    assert 'bloco-gabarito' in html
+
+
 def test_caixa_da_coluna_fica_mais_estreita(fmt):
     """O padding interno da caixa da coluna precisa ser menor."""
     css = fmt._PDF_CSS
@@ -518,6 +561,52 @@ def test_espaco_duplo_some_das_marcacoes_no_texto_limpo(fmt):
 
     assert '  ' not in resultado, 'sobrou espaco duplo no texto'
     assert '(PGM-Fortaleza/CE-2017) (PGM-POA/RS-2022)' in resultado
+
+
+# ------------------------------------------------------------------
+# Verbete da jurisprudencia (spec 0004)
+# ------------------------------------------------------------------
+
+BLOCO_COM_VERBETE = """JURISPRUDENCIA|Art. 2º-A|Julgado|74
+STF · RE 695911/RR · Min. Dias Toffoli · 14/12/2020 · Plenário, Tema 492
+É inconstitucional a cobrança, por parte de associação, de taxa de manutenção e conservação de loteamento imobiliário urbano de proprietário não associado.
+*O STF orienta que a associação de loteamento não pode cobrar taxa de manutenção e conservação de loteamento de proprietário não associado.*
+Incidência em provas:
+"""
+
+
+def test_verbete_da_jurisprudencia_sai_em_italico(fmt):
+    """O verbete (ultima linha do bloco) e renderizado em italico."""
+    html, _ = fmt.formatar_para_anki(fmt.formatar_texto_legal(LEI_COMPLETA))
+    html = fmt.mesclar_comentarios(html, BLOCO_COM_VERBETE)
+
+    assert '<i>O STF orienta que a associação de loteamento' in html
+    assert '*O STF orienta' not in html, 'os asteriscos ficaram no HTML'
+
+
+def test_verbete_nao_e_engolido_pela_incidencia(fmt):
+    """O verbete fica no corpo do bloco, nao na linha de incidencia."""
+    html, _ = fmt.formatar_para_anki(fmt.formatar_texto_legal(LEI_COMPLETA))
+    html = fmt.mesclar_comentarios(html, BLOCO_COM_VERBETE)
+
+    pos_verbete = html.find('<i>O STF orienta')
+    pos_incidencia = html.find('Incidência em provas:')
+
+    assert pos_verbete != -1, 'o verbete nao foi renderizado'
+    assert pos_incidencia != -1, 'a incidencia sumiu'
+    assert pos_verbete < pos_incidencia, 'a incidencia engoliu o verbete'
+
+
+def test_verbete_no_texto_limpo_perde_os_asteriscos(fmt):
+    """No texto puro o verbete sai limpo, sem os asteriscos."""
+    out = fmt._processar_callback(
+        LEI_COMPLETA, 'texto', 2, 2, 8, 8, BLOCO_COM_VERBETE,
+        1500, 'capitulo', 1.0, 1.0
+    )
+    resultado = out.data['resultado']
+
+    assert 'O STF orienta que a associação de loteamento' in resultado
+    assert '*O STF orienta' not in resultado, 'sobraram asteriscos no texto'
 
 
 # ------------------------------------------------------------------

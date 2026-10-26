@@ -516,12 +516,15 @@ def formatar_para_anki(texto_formatado,
             elif tipo == 'INC':
                 # A incidencia do dispositivo: fica logo ACIMA do
                 # dispositivo, em linha propria e menor.
-                marcas = _marcas_html(nome)
+                # O tamanho e padronizado pelo painel de fontes.
+                marcas = _marcas_html(
+                    nome, _rel(_fonte('marcas'), _fonte('incidencia')))
                 blocos.append(
                     '<span class="incidencia-dispositivo" '
                     'style="display:block;'
                     'padding-left:0px;'
-                    'margin-bottom:2px;">'
+                    'margin-bottom:2px;'
+                    f'font-size:{_fonte("incidencia")}%;">'
                     f'{marcas}</span>'
                 )
 
@@ -785,6 +788,128 @@ _ORDEM_TIPOS = {
     'NOTA': 6,
 }
 
+# ============================================================
+# TAMANHO DAS FONTES (padronizacao)
+# ============================================================
+#
+# MODELO DE TAMANHO
+#
+#   "bloco", "juris" e "questao" sao ABSOLUTOS: percentual da fonte
+#   do cartao (a fonte do texto legal). 100 = mesmo tamanho da lei.
+#   Eles definem o container de cada tipo de bloco.
+#
+#   Os demais sao RELATIVOS ao container em que vivem. Ex.: "corpo"
+#   a 100 mantem o mesmo tamanho do container; a 120 o amplia 20%.
+#
+#   "marcas" e "incidencia" sao absolutos, porque vivem no texto
+#   legal (fora de qualquer bloco de comentario).
+#
+# O tamanho e gravado como estilo INLINE no HTML gerado. Assim o
+# resultado e identico no Anki e no PDF, qualquer que seja o CSS do
+# deck: o inline sempre ganha da folha de estilo.
+
+_CONFIG_FONTE_PADRAO = {
+    'bloco':      94,   # container: comentario, nota, tabela, esquema
+    'juris':      80,   # container: jurisprudence e doutrina
+    'questao':    80,   # container: questoes
+    'corpo':     100,   # corpo do bloco (relativo ao container)
+    'ident':      80,   # linha de identificacao do julgado
+    'meta':       66,   # linha de incidencia do bloco
+    'fontes':     72,   # lista de bancas das fontes
+    'gabarito':   80,   # gabarito da questao
+    'marcas':     65,   # marcadores de banca no texto legal
+    'incidencia': 76,   # incidencia do dispositivo (linha acima)
+    'esquema':    86,   # diagramas
+    'tabela':     88,   # tabelas
+}
+
+# Estado atual (alterado pelo painel da interface).
+_CONFIG_FONTE = dict(_CONFIG_FONTE_PADRAO)
+
+# Container de cada tipo de bloco.
+_FONTE_CONTAINER_TIPO = {
+    'COMENTARIO': 'bloco',
+    'NOTA': 'bloco',
+    'TABELA': 'bloco',
+    'ESQUEMA': 'bloco',
+    'MARCAS': 'bloco',
+    'QUESTAO': 'questao',
+    'JURISPRUDENCIA': 'juris',
+    'DOUTRINA': 'juris',
+}
+
+_LIMITE_FONTE = (30, 200)
+
+
+def _configurar_fontes(valores=None):
+    """
+    Aplica o painel de tamanhos de fonte.
+
+    `valores` pode ser um dicionario {chave: percentual} ou uma lista
+    na ordem de _CONFIG_FONTE_PADRAO. Valores fora da faixa sao
+    ajustados para o limite permitido.
+    """
+    global _CONFIG_FONTE
+
+    novo = dict(_CONFIG_FONTE_PADRAO)
+
+    if isinstance(valores, dict):
+        pares = list(valores.items())
+    elif isinstance(valores, (list, tuple)):
+        pares = list(zip(_CONFIG_FONTE_PADRAO.keys(), valores))
+    else:
+        pares = []
+
+    for chave, valor in pares:
+        if chave not in novo:
+            continue
+        try:
+            numero = float(valor)
+        except (TypeError, ValueError):
+            continue
+        numero = max(_LIMITE_FONTE[0], min(_LIMITE_FONTE[1], numero))
+        novo[chave] = numero
+
+    _CONFIG_FONTE = novo
+    return dict(_CONFIG_FONTE)
+
+
+def _fonte(chave):
+    """Percentual configurado para um elemento."""
+    return _CONFIG_FONTE.get(chave, _CONFIG_FONTE_PADRAO.get(chave, 100))
+
+
+def _container_absoluto(tipo):
+    """Tamanho absoluto (em % da fonte do cartao) do container do bloco."""
+    chave = _FONTE_CONTAINER_TIPO.get(tipo, 'bloco')
+    return _fonte(chave)
+
+
+def _abs(chave, base):
+    """
+    Tamanho absoluto (em % da fonte do cartao) de um elemento.
+
+    `base` e o tamanho absoluto do container do elemento.
+    """
+    return float(base) * _fonte(chave) / 100.0
+
+
+def _rel(valor_absoluto, pai_absoluto):
+    """
+    Converte um tamanho absoluto em percentual RELATIVO ao pai.
+
+    O CSS resolve 'font-size' percentual em relacao ao tamanho
+    computado do pai. Dividir pelo pai garante que o tamanho final
+    pedido seja alcancado, mesmo com elementos aninhados.
+    """
+    try:
+        pai = float(pai_absoluto)
+    except (TypeError, ValueError):
+        pai = 100.0
+    if not pai:
+        pai = 100.0
+    return 'font-size:%s%%;' % round(float(valor_absoluto) * 100.0 / pai, 2)
+
 _RE_CABECALHO_TIPADO = re.compile(
     r'^(?P<tipo>' + '|'.join(_TIPOS_BLOCO) + r')\s*\|(?P<resto>.*)$',
     re.IGNORECASE,
@@ -826,12 +951,15 @@ def _dividir_fontes(texto):
     return [p.strip(' .\t\u2013-') for p in partes if p.strip(' .\t\u2013-')]
 
 
-def _marcas_html(texto):
+def _marcas_html(texto, estilo=''):
     """
     Converte a lista de bancas em marcadores entre parenteses.
 
     'PGESP-2002; MPSP-2005/2008/2013' vira
     '(PGESP-2002) (MPSP-2005/2008/2013)'
+
+    `estilo` e um trecho de estilo inline (ex.: 'font-size:65%;')
+    aplicado aos marcadores. Vazio = herda o tamanho do pai.
     """
     itens = _dividir_fontes(texto)
     if not itens:
@@ -846,8 +974,9 @@ def _marcas_html(texto):
         unicos.append(item)
     if not unicos:
         return ''
+    attr = (' style="%s"' % estilo) if estilo else ''
     return ' '.join(
-        '<span class="marcas-banca">(%s)</span>' % html_lib.escape(i)
+        '<span class="marcas-banca"%s>(%s)</span>' % (attr, html_lib.escape(i))
         for i in unicos
     )
 
@@ -1002,6 +1131,10 @@ _RE_CAMPO_INCIDENCIA = re.compile(
     re.IGNORECASE,
 )
 
+# O VERBETE (a sintese da orientacao firmada pelo tribunal) e a ultima
+# linha do bloco JURISPRUDENCIA, marcada pela IA com asteriscos.
+_RE_VERBETE = re.compile(r'^\*(?!\*)(.+?)(?<!\*)\*$', re.DOTALL)
+
 _CAMPOS_QUE_INTERROMPEM = re.compile(
     r'^\s*(?:RESPOSTA|GABARITO|ENUNCIADO|QUEST[AÃ]O|TEXTO|TRIBUNAL|'
     r'[OÓ]RG[AÃ]O|PROCESSO|RELATOR|DATA(?:\s+JUDICIAL)?|LEADING|LEANDING|'
@@ -1011,13 +1144,17 @@ _CAMPOS_QUE_INTERROMPEM = re.compile(
 )
 
 
-def _extrair_incidencia(corpo):
+def _extrair_incidencia(corpo, permitir_verbete=False):
     """
     Separa a linha de incidencia do material do corpo do bloco.
 
     Devolve (corpo_sem_incidencia, texto_incidencia, bancas).
     No material a incidencia vem logo apos o enunciado/ementa e leva a
     lista de bancas. Aqui ela e renderizada em fonte pequena e cinza.
+
+    `permitir_verbete` (bloco JURISPRUDENCIA) impede que a ultima
+    linha do bloco, o verbete marcado com asteriscos, seja engolida
+    pela incidencia.
     """
     linhas = []
     incidencia = ''
@@ -1040,6 +1177,11 @@ def _extrair_incidencia(corpo):
             continue
 
         if coletando:
+            # O VERBETE (a ultima linha do bloco) nao faz parte da
+            # incidencia: ele volta para o corpo do bloco.
+            if permitir_verbete and _RE_VERBETE.match(t):
+                linhas.append(t)
+                break
             # A lista de bancas pode ocupar varias linhas; para quando
             # comeca outro campo conhecido.
             if _CAMPOS_QUE_INTERROMPEM.match(t):
@@ -1208,7 +1350,7 @@ _CAMPOS_DOUTRINA = ('AUTOR', 'OBRA', 'CAPÍTULO', 'CAPITULO', 'SEÇÃO', 'SECAO'
                     'PAGINA', 'PÁGINA', 'EDITORA', 'ANO', 'TESE')
 
 
-def _fontes_html(fontes):
+def _fontes_html(fontes, estilo=''):
     """Linha compacta e discreta com as bancas de origem."""
     if not fontes:
         return ''
@@ -1225,8 +1367,9 @@ def _fontes_html(fontes):
         unicos.append(f)
     if not unicos:
         return ''
+    attr = (' style="%s"' % estilo) if estilo else ''
     return (
-        '<div class="bloco-fontes">'
+        '<div class="bloco-fontes"%s>'
         '<span class="bloco-fontes-rotulo">Fontes:</span> '
         + ' <span class="bloco-fontes-sep">·</span> '.join(
             html_lib.escape(f) for f in unicos)
@@ -1234,7 +1377,7 @@ def _fontes_html(fontes):
     )
 
 
-def _fontes_inline(fontes):
+def _fontes_inline(fontes, estilo=''):
     """Lista de bancas em linha, sem bloco proprio."""
     if not fontes:
         return ''
@@ -1251,27 +1394,67 @@ def _fontes_inline(fontes):
         unicos.append(f)
     if not unicos:
         return ''
-    return ('<span class="bloco-fontes">%s</span>'
-            % ' · '.join(html_lib.escape(f) for f in unicos))
+    attr = (' style="%s"' % estilo) if estilo else ''
+    return ('<span class="bloco-fontes"%s>%s</span>'
+            % (attr, ' · '.join(html_lib.escape(f) for f in unicos)))
 
 
-def _nota_html(texto):
+def _nota_html(texto, estilo=''):
     """Linha auxiliar discreta (ex.: fundamento, ressalva)."""
     texto = (texto or '').strip()
     if not texto:
         return ''
-    return '<div class="bloco-nota">%s</div>' % _md_para_html(texto)
+    attr = (' style="%s"' % estilo) if estilo else ''
+    return '<div class="bloco-nota"%s>%s</div>' % (attr, _md_para_html(texto))
 
 
-def _ident_html(texto):
+def _ident_html(texto, estilo=''):
     """Linha compacta de identificacao (julgado, referencia doutrinaria)."""
     texto = (texto or '').strip()
     if not texto:
         return ''
-    return '<div class="bloco-ident">%s</div>' % html_lib.escape(texto)
+    attr = (' style="%s"' % estilo) if estilo else ''
+    return '<div class="bloco-ident"%s>%s</div>' % (attr, html_lib.escape(texto))
 
 
-def _render_jurisprudencia(corpo):
+def _estilos_tipo(tipo):
+    """
+    Tamanhos (em % da fonte do cartao) de um tipo de bloco.
+
+    Devolve os valores absolutos de cada elemento do bloco. O
+    container define a base; os demais sao relativos a ele.
+    """
+    cont = _container_absoluto(tipo)
+    return {
+        'cont': cont,
+        'corpo': cont * _fonte('corpo') / 100.0,
+        'ident': cont * _fonte('ident') / 100.0,
+        'meta': cont * _fonte('meta') / 100.0,
+        'fontes': cont * _fonte('fontes') / 100.0,
+        'gabarito': cont * _fonte('gabarito') / 100.0,
+        'esquema': cont * _fonte('esquema') / 100.0,
+        'tabela': cont * _fonte('tabela') / 100.0,
+    }
+
+
+def _bloco_linha_html(linha, est):
+    """
+    Uma linha de prosa do bloco.
+
+    O VERBETE (a sintese da orientacao firmada pelo tribunal) e
+    reconhecido pelos asteriscos com que a IA o marca e sai em
+    italico explicito.
+    """
+    m = _RE_VERBETE.match(linha.strip())
+    if m:
+        conteudo = '<i>%s</i>' % _md_para_html(m.group(1))
+    else:
+        conteudo = _md_para_html(linha)
+    return ('<div class="bloco-linha" style="%s">%s</div>'
+            % (_rel(est['corpo'], est['cont']), conteudo))
+
+
+def _render_jurisprudencia(corpo, est):
     """
     Julgado em duas partes: identificacao numa linha e ementa em prosa.
 
@@ -1295,25 +1478,26 @@ def _render_jurisprudencia(corpo):
         if leading and leading not in ident:
             ident = (ident + ' · ' + leading) if ident else leading
         if ident:
-            partes.append(_ident_html(ident))
+            partes.append(_ident_html(ident, _rel(est['ident'], est['cont'])))
 
         ementa = (campos.get('EMENTA') or campos.get('ELEMENTA')
                   or campos.get('TESE') or '')
         if ementa:
-            partes.append('<div class="bloco-linha">%s</div>'
-                          % _md_para_html(ementa))
+            partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                          % (_rel(est['corpo'], est['cont']),
+                             _md_para_html(ementa)))
     else:
         linhas = [l.strip() for l in corpo.split('\n') if l.strip()]
         if linhas:
-            partes.append(_ident_html(linhas[0]))
+            partes.append(_ident_html(linhas[0],
+                                      _rel(est['ident'], est['cont'])))
             for linha in linhas[1:]:
-                partes.append('<div class="bloco-linha">%s</div>'
-                              % _md_para_html(linha))
+                partes.append(_bloco_linha_html(linha, est))
 
     return partes
 
 
-def _render_doutrina(corpo):
+def _render_doutrina(corpo, est):
     """Referencia completa numa linha e a tese em prosa."""
     partes = []
     campos = _campos_do_corpo(corpo, _CAMPOS_DOUTRINA)
@@ -1333,27 +1517,34 @@ def _render_doutrina(corpo):
             ref = (ref + ', ' if ref else '') + 'p. ' + pagina
         ident = ' · '.join(x for x in (autor, ref) if x)
         if ident:
-            partes.append(_ident_html(ident))
+            partes.append(_ident_html(ident, _rel(est['ident'], est['cont'])))
 
         tese = campos.get('TESE') or ''
         if tese:
-            partes.append('<div class="bloco-linha">%s</div>'
-                          % _md_para_html(tese))
+            partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                          % (_rel(est['corpo'], est['cont']),
+                             _md_para_html(tese)))
     else:
         linhas = [l.strip() for l in corpo.split('\n') if l.strip()]
         if linhas:
-            partes.append(_ident_html(linhas[0]))
+            partes.append(_ident_html(linhas[0],
+                                      _rel(est['ident'], est['cont'])))
             for linha in linhas[1:]:
-                partes.append('<div class="bloco-linha">%s</div>'
-                              % _md_para_html(linha))
+                partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                              % (_rel(est['corpo'], est['cont']),
+                                 _md_para_html(linha)))
 
     return partes
 
 
-def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
+def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None,
+                         rotulo=''):
     """Gera o HTML de um bloco tipado."""
     # O subtitulo NAO aparece: o bloco mostra apenas o tipo.
     rotulo = _ROTULOS_TIPO.get(tipo, tipo)
+
+    # Tamanhos padronizados do bloco (em % da fonte do cartao).
+    est = _estilos_tipo(tipo)
 
     corpo, fontes_do_corpo = _extrair_fontes(corpo)
     if fontes_do_corpo:
@@ -1362,7 +1553,7 @@ def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
     # A linha de incidencia do material vem logo apos o texto. Fica
     # separada para ser renderizada em fonte pequena e cinza claro.
     corpo, incidencia, bancas_incidencia = \
-        _extrair_incidencia(corpo)
+        _extrair_incidencia(corpo, permitir_verbete=(tipo == 'JURISPRUDENCIA'))
     if bancas_incidencia:
         fontes = list(fontes or []) + bancas_incidencia
 
@@ -1382,43 +1573,54 @@ def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
     if tipo == 'TABELA':
         corpo_limpo = corpo.strip()
         if corpo_limpo.startswith('<table'):
-            partes.append(_higienizar_html(corpo_limpo))
+            tabela_html = _higienizar_html(corpo_limpo)
         else:
-            partes.append(_tabela_markdown_para_html(
-                [l for l in corpo_limpo.splitlines() if l.strip()]))
+            tabela_html = _tabela_markdown_para_html(
+                [l for l in corpo_limpo.splitlines() if l.strip()])
+        # O tamanho da tabela e padronizado: o inline vence o CSS do deck.
+        tabela_html = re.sub(
+            r'<table\b',
+            '<table style="%s"' % _rel(est['tabela'], est['cont']),
+            tabela_html, count=1)
+        partes.append(tabela_html)
 
     elif tipo == 'ESQUEMA':
         linhas = [l.rstrip() for l in corpo.splitlines() if l.strip()]
-        partes.append('<pre class="esquema">%s</pre>'
-                      % html_lib.escape('\n'.join(linhas)))
+        partes.append('<pre class="esquema" style="%s">%s</pre>'
+                      % (_rel(est['esquema'], est['cont']),
+                         html_lib.escape('\n'.join(linhas))))
 
     elif tipo == 'QUESTAO':
         # O corpo do bloco QUESTAO e o ENUNCIADO, transcrito do material,
         # sem campos e sem rotulos. A marca da banca vem inline, tal
-        # como aparece no material.
+        # como aparece no material. Uma linha por questao: quando o
+        # material traz varias questoes no mesmo bloco, cada uma vira
+        # uma .bloco-linha e o CSS põe a divisoria entre elas.
         enunciado = _extrair_enunciado_questao(corpo)
         gabarito = _extrair_gabarito_questao(corpo)
-        if enunciado:
-            linha = _md_para_html(enunciado)
-            if gabarito:
-                # O gabarito entra inline, no fim do enunciado.
-                linha += (' <span class="bloco-gabarito">%s</span>'
-                          % _md_para_html(gabarito))
-            partes.append('<div class="bloco-linha">%s</div>' % linha)
-        elif gabarito:
-            partes.append('<div class="bloco-linha">'
-                          '<span class="bloco-gabarito">%s</span></div>'
-                          % _md_para_html(gabarito))
+        questoes = _dividir_questoes(enunciado)
+        if not questoes and gabarito:
+            questoes = ['']
+        for i, questao in enumerate(questoes):
+            linha = _md_para_html(questao)
+            if gabarito and i == len(questoes) - 1:
+                # O gabarito entra inline, no fim da ultima questao.
+                linha += (' <span class="bloco-gabarito" style="%s">%s</span>'
+                          % (_rel(est['gabarito'], est['corpo']),
+                             _md_para_html(gabarito)))
+            partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                          % (_rel(est['corpo'], est['cont']), linha))
         if not partes:
             paragrafos = [p for p in corpo.split('\n') if p.strip()]
-            partes.append('<div class="bloco-linha">%s</div>'
-                          % '<br>'.join(_md_para_html(p) for p in paragrafos))
+            partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                          % (_rel(est['corpo'], est['cont']),
+                             '<br>'.join(_md_para_html(p) for p in paragrafos)))
 
     elif tipo == 'JURISPRUDENCIA':
-        partes.extend(_render_jurisprudencia(corpo))
+        partes.extend(_render_jurisprudencia(corpo, est))
 
     elif tipo == 'DOUTRINA':
-        partes.extend(_render_doutrina(corpo))
+        partes.extend(_render_doutrina(corpo, est))
 
     else:
         paragrafos = []
@@ -1428,8 +1630,9 @@ def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
                 continue
             paragrafos.append(t)
         if paragrafos:
-            partes.append('<div class="bloco-linha">%s</div>'
-                          % '<br>'.join(_md_para_html(p) for p in paragrafos))
+            partes.append('<div class="bloco-linha" style="%s">%s</div>'
+                          % (_rel(est['corpo'], est['cont']),
+                             '<br>'.join(_md_para_html(p) for p in paragrafos)))
 
     # A incidencia e as fontes vao numa UNICA linha pequena, logo apos
     # o texto, para o bloco ocupar o minimo de espaco.
@@ -1437,21 +1640,31 @@ def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
     if incidencia:
         meta.append(_md_para_html(incidencia))
     if fontes:
-        meta.append(_fontes_inline(fontes))
+        meta.append(_fontes_inline(fontes,
+                                   _rel(est['fontes'], est['meta'])))
     if meta:
-        partes.append('<div class="bloco-meta">%s</div>'
-                      % ' <span class="bloco-meta-sep">·</span> '.join(meta))
+        partes.append('<div class="bloco-meta" style="%s">%s</div>'
+                      % (_rel(est['meta'], est['cont']),
+                         ' <span class="bloco-meta-sep">·</span> '.join(meta)))
 
     attr = ' open' if aberta else ''
     # O summary fica vazio: o rotulo ("Questão", "Jurisprudência", ...)
     # so ocupa espaco no PDF e no Anki. O tipo continua marcado em
     # data-bloco, que e o que o CSS usa para colorir a caixa.
+    # O tamanho do container e gravado inline, para o bloco ter o
+    # tamanho padronizado independente do CSS do deck.
+    # data-alvo identifica o dispositivo: permite trocar o bloco
+    # antigo pelo novo na atualizacao do arquivo do Anki.
+    alvo_attr = ''
+    if rotulo:
+        alvo_attr = ' data-alvo="%s"' % html_lib.escape(rotulo, quote=True)
     return (
-        '<details class="comentario" data-bloco="%s"%s>'
+        '<details class="comentario" data-bloco="%s"%s%s style="%s">'
         '<summary></summary>'
         '<div class="bloco-corpo">%s</div>'
         '</details>'
-    ) % (tipo.lower(), attr, ''.join(partes))
+    ) % (tipo.lower(), alvo_attr, attr,
+         _rel(est['cont'], 100.0), ''.join(partes))
 
 
 def _parse_blocos_tipados(comentarios_txt):
@@ -1577,10 +1790,11 @@ def _ordenar_blocos(lista):
 
 def _detalhes_blocos(alvo, lista, entrelinha_comentario=1.0):
     """Renderiza os blocos de um alvo."""
+    rotulo = _rotulo_alvo(alvo)
     return '\n'.join(
         _render_bloco_tipado(
             b['tipo'], b['subtitulo'], b['corpo'],
-            fontes=b.get('fontes'))
+            fontes=b.get('fontes'), rotulo=rotulo)
         for b in lista if b['tipo'] != 'MARCAS'
     )
 
@@ -1717,7 +1931,10 @@ def mesclar_comentarios(html_anki, comentarios_txt, add_sintese=True,
             for linha in bloco['corpo'].split('\n'):
                 if linha.strip():
                     textos.append(linha.strip())
-        return _marcas_html(' '.join(textos))
+        # As marcas vivem no texto legal: tamanho absoluto em relacao
+        # a fonte do cartao.
+        return _marcas_html(' '.join(textos),
+                            _rel(_fonte('marcas'), 100.0))
 
     def fechar_artigo():
         if art_atual is None:
@@ -1781,7 +1998,8 @@ def mesclar_comentarios(html_anki, comentarios_txt, add_sintese=True,
 
     if add_sintese and sintese:
         html_final += (
-            f'\n<details class="comentario" style="line-height:{entrelinha_comentario}">'
+            f'\n<details class="comentario" style="line-height:{entrelinha_comentario};'
+            f'{_rel(_fonte("bloco"), 100.0)}">'
             f'<summary>Síntese Final</summary>{_md_para_html(sintese)}</details>'
         )
 
@@ -2628,7 +2846,7 @@ details.comentario[data-bloco] .bloco-gabarito {
 /* Identificacao do julgado / da referencia: uma linha so. */
 details.comentario[data-bloco] .bloco-ident {
     margin: 0 0 1px;
-    font-size: .84em;
+    font-size: .80em;
     font-weight: 700;
     color: #4b4636;
 }
@@ -2671,7 +2889,7 @@ details.comentario[data-bloco] .bloco-meta-sep {
 
 /* Gabarito inline, no fim do enunciado. */
 details.comentario[data-bloco] .bloco-gabarito {
-    font-size: .92em;
+    font-size: .80em;
     font-weight: 700;
     color: #24506b;
     white-space: nowrap;
@@ -2679,7 +2897,7 @@ details.comentario[data-bloco] .bloco-gabarito {
 
 /* Marcadores de banca no fim do texto legal. */
 .estilo-lei > span[data-dispositivo] .marcas-banca {
-    font-size: .74em;
+    font-size: .65em;
     color: #7d7768;
     letter-spacing: -.01em;
 }
@@ -2742,6 +2960,7 @@ details.comentario[data-bloco="questao"] {
     border: 1px solid #9db4c6;
     padding: 2px 3px;
     margin: 2px 0;
+    font-size: .80em;
 }
 
 /* SEPARADOR ENTRE QUESTOES
@@ -2752,10 +2971,12 @@ details.comentario[data-bloco="questao"] {
  Quando duas questoes vem em caixas <details> seguidas, as caixas sao
  fundidas visualmente: a borda de baixo da primeira e a de cima da
  segunda saem, e a linha divisoria fica no meio.
+
+ A marcacao nao vem do seletor CSS adjacente: as questoes de artigos
+ distintos nao sao irmas no DOM. Quem marca e o JavaScript do PDF, que
+ conhece a ordem real dos blocos.
 */
-details.comentario[data-bloco="questao"]:has(
-    + details.comentario[data-bloco="questao"]
-) {
+details.comentario[data-bloco="questao"].bloco-questao-fundida {
     margin-bottom: 0;
     border-bottom: none;
     border-bottom-left-radius: 0;
@@ -2763,7 +2984,7 @@ details.comentario[data-bloco="questao"]:has(
     padding-bottom: 3px;
 }
 
-details.comentario[data-bloco="questao"] + details.comentario[data-bloco="questao"] {
+details.comentario[data-bloco="questao"].bloco-questao-separada {
     margin-top: 0;
     border-top: none;
     border-top-left-radius: 0;
@@ -2771,7 +2992,7 @@ details.comentario[data-bloco="questao"] + details.comentario[data-bloco="questa
     padding-top: 0;
 }
 
-details.comentario[data-bloco="questao"] + details.comentario[data-bloco="questao"] > .bloco-corpo {
+details.comentario[data-bloco="questao"].bloco-questao-separada .bloco-corpo {
     border-top: 1px solid #aaa;
     padding-top: 3px;
 }
@@ -2791,6 +3012,7 @@ details.comentario[data-bloco="jurisprudencia"] {
     border: 1px solid #b9b3d0;
     padding: 2px 3px;
     margin: 2px 0;
+    font-size: .80em;
 }
 
 details.comentario[data-bloco="doutrina"] {
@@ -3163,6 +3385,24 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         if (primeiroArtigo) primeiroArtigo.classList.add('pdf-primeiro-artigo');
     });
 
+    // SEPARADOR ENTRE QUESTOES
+    //
+    // A divisoria entra apenas entre duas questoes consecutivas: a
+    // questao marcada e a que vem logo depois dela no DOM. A marcacao
+    // e feita aqui, e nao por seletor CSS adjacente, porque as
+    // questoes de artigos distintos nao sao irmas no DOM.
+    document.querySelectorAll(
+        'details.comentario[data-bloco="questao"]'
+    ).forEach(el => {
+        const anterior = el.previousElementSibling;
+        if (!anterior) return;
+        if (!anterior.matches(
+            'details.comentario[data-bloco="questao"]'
+        )) return;
+        el.classList.add('bloco-questao-separada');
+        anterior.classList.add('bloco-questao-fundida');
+    });
+
     document.querySelectorAll(
         '.estilo-lei span[style]'
     ).forEach(el => {
@@ -3354,7 +3594,9 @@ def _exportar_pdf_callback(texto_bruto, comentarios_txt, espacamento, indent_par
                            layout='three', titulo='Texto legal comentado',
                            incluir_comentarios=False, fonte=11, css_anki='',
                            conteudo_anki='', entrelinha=1.0,
-                           entrelinha_comentario=1.0):
+                           entrelinha_comentario=1.0, fontes=None):
+    if fontes:
+        _configurar_fontes(fontes)
     try:
         if conteudo_anki.strip():
             _, cartoes = _parse_anki_export(conteudo_anki)
@@ -3439,6 +3681,12 @@ def _mesclar_no_texto(texto_formatado, comentarios_txt):
             colapsar = bloco['tipo'] != 'ESQUEMA'
             for linha in bloco['corpo'].split('\n'):
                 if linha.strip():
+                    # No texto puro o verbete perde os asteriscos: o
+                    # italico e do HTML, nao do texto.
+                    m_verbete = _RE_VERBETE.match(linha.strip())
+                    if m_verbete:
+                        resultado.append(m_verbete.group(1).strip())
+                        continue
                     resultado.append(
                         _colapsar_espacos(linha) if colapsar else linha.strip()
                     )
@@ -3518,7 +3766,9 @@ def _ancora_texto(linha, estado):
 def _processar_callback(texto_bruto, formato, espacamento, indent_par, indent_inc,
                        indent_ali, comentarios_txt='', chars_alvo=1500,
                        assunto_tipo='capitulo', entrelinha=1.0,
-                       entrelinha_comentario=1.0):
+                       entrelinha_comentario=1.0, fontes=None):
+    if fontes:
+        _configurar_fontes(fontes)
     if not texto_bruto.strip():
         return IPython.display.JSON({'resultado': '', 'stats': '⚠️ Cole o texto legal antes de formatar!', 'erro': True})
 
@@ -3572,7 +3822,9 @@ def _processar_callback(texto_bruto, formato, espacamento, indent_par, indent_in
 
 
 def _mesclar_callback(html_anki, comentarios_txt, entrelinha_comentario=1.0,
-                     cartoes=None):
+                     cartoes=None, fontes=None):
+    if fontes:
+        _configurar_fontes(fontes)
     if not html_anki.strip():
         return IPython.display.JSON({'resultado': '', 'stats': '⚠️ Formate o texto primeiro!', 'erro': True})
     if not comentarios_txt.strip():
@@ -3596,7 +3848,9 @@ def _mesclar_callback(html_anki, comentarios_txt, entrelinha_comentario=1.0,
 
 def _exportar_callback(texto_bruto, comentarios_txt, espacamento, indent_par,
                       indent_inc, indent_ali, chars_alvo, assunto_tipo='capitulo',
-                      entrelinha=1.0, entrelinha_comentario=1.0):
+                      entrelinha=1.0, entrelinha_comentario=1.0, fontes=None):
+    if fontes:
+        _configurar_fontes(fontes)
     if not texto_bruto.strip():
         return IPython.display.JSON({'conteudo': '', 'stats': '⚠️ Texto vazio!', 'erro': True})
     cartoes = gerar_importacao_anki(
@@ -3624,7 +3878,9 @@ def _exportar_callback(texto_bruto, comentarios_txt, espacamento, indent_par,
 
 
 
-def _atualizar_callback(conteudo_anki, comentarios_txt):
+def _atualizar_callback(conteudo_anki, comentarios_txt, fontes=None):
+    if fontes:
+        _configurar_fontes(fontes)
     if not conteudo_anki.strip():
         return IPython.display.JSON({'conteudo': '', 'stats': '⚠️ Cole o conteúdo do arquivo exportado do Anki!', 'erro': True})
     if not comentarios_txt.strip():
@@ -3983,6 +4239,88 @@ _HTML_UI = r"""
   <p style="font-size:12px;margin-top:10px;color:#aaa;">Após alterar os controles, clique em Formatar para atualizar o visualizador. A exportação usa os valores atuais. O tamanho alvo agrupa os cartões do Anki e do visualizador; no PDF em colunas, o texto flui conforme a largura e a altura da página. Artigos são mantidos inteiros nos cartões e podem ultrapassar o tamanho alvo.</p>
 </div>
 
+<div class="indent-panel">
+  <div class="indent-title">🔠 Tamanho das Fontes (padronização)</div>
+  <div class="indent-grid">
+    <div class="slider-row">
+      <label>Bloco (comentário/nota):</label>
+      <input type="range" id="sl-f-bloco" min="30" max="200" step="1" value="94"
+             oninput="updateVal('val-f-bloco', this.value + '%')">
+      <span class="slider-val" id="val-f-bloco">94%</span>
+    </div>
+    <div class="slider-row">
+      <label>Jurisprudência/Doutrina:</label>
+      <input type="range" id="sl-f-juris" min="30" max="200" step="1" value="80"
+             oninput="updateVal('val-f-juris', this.value + '%')">
+      <span class="slider-val" id="val-f-juris">80%</span>
+    </div>
+    <div class="slider-row">
+      <label>Questão:</label>
+      <input type="range" id="sl-f-questao" min="30" max="200" step="1" value="80"
+             oninput="updateVal('val-f-questao', this.value + '%')">
+      <span class="slider-val" id="val-f-questao">80%</span>
+    </div>
+    <div class="slider-row">
+      <label>Corpo do bloco:</label>
+      <input type="range" id="sl-f-corpo" min="30" max="200" step="1" value="100"
+             oninput="updateVal('val-f-corpo', this.value + '%')">
+      <span class="slider-val" id="val-f-corpo">100%</span>
+    </div>
+    <div class="slider-row">
+      <label>Identificação do julgado:</label>
+      <input type="range" id="sl-f-ident" min="30" max="200" step="1" value="80"
+             oninput="updateVal('val-f-ident', this.value + '%')">
+      <span class="slider-val" id="val-f-ident">80%</span>
+    </div>
+    <div class="slider-row">
+      <label>Linha de incidência:</label>
+      <input type="range" id="sl-f-meta" min="30" max="200" step="1" value="66"
+             oninput="updateVal('val-f-meta', this.value + '%')">
+      <span class="slider-val" id="val-f-meta">66%</span>
+    </div>
+    <div class="slider-row">
+      <label>Lista de bancas (fontes):</label>
+      <input type="range" id="sl-f-fontes" min="30" max="200" step="1" value="72"
+             oninput="updateVal('val-f-fontes', this.value + '%')">
+      <span class="slider-val" id="val-f-fontes">72%</span>
+    </div>
+    <div class="slider-row">
+      <label>Gabarito da questão:</label>
+      <input type="range" id="sl-f-gabarito" min="30" max="200" step="1" value="80"
+             oninput="updateVal('val-f-gabarito', this.value + '%')">
+      <span class="slider-val" id="val-f-gabarito">80%</span>
+    </div>
+    <div class="slider-row">
+      <label>Marcadores no texto legal:</label>
+      <input type="range" id="sl-f-marcas" min="30" max="200" step="1" value="65"
+             oninput="updateVal('val-f-marcas', this.value + '%')">
+      <span class="slider-val" id="val-f-marcas">65%</span>
+    </div>
+    <div class="slider-row">
+      <label>Incidência do dispositivo:</label>
+      <input type="range" id="sl-f-incidencia" min="30" max="200" step="1" value="76"
+             oninput="updateVal('val-f-incidencia', this.value + '%')">
+      <span class="slider-val" id="val-f-incidencia">76%</span>
+    </div>
+    <div class="slider-row">
+      <label>Esquema (diagrama):</label>
+      <input type="range" id="sl-f-esquema" min="30" max="200" step="1" value="86"
+             oninput="updateVal('val-f-esquema', this.value + '%')">
+      <span class="slider-val" id="val-f-esquema">86%</span>
+    </div>
+    <div class="slider-row">
+      <label>Tabela:</label>
+      <input type="range" id="sl-f-tabela" min="30" max="200" step="1" value="88"
+             oninput="updateVal('val-f-tabela', this.value + '%')">
+      <span class="slider-val" id="val-f-tabela">88%</span>
+    </div>
+  </div>
+  <div class="btn-group" style="margin-top:12px;margin-bottom:0">
+    <button class="btn-secondary" onclick="restaurarFontes()">↩️ Restaurar tamanhos padrão</button>
+  </div>
+  <p style="font-size:12px;margin-top:10px;color:#aaa;">Percentuais em relação à fonte do cartão. O tamanho é gravado como estilo inline no HTML: o resultado é idêntico no Anki e no PDF, independente do CSS do deck.</p>
+</div>
+
 <div class="btn-group">
   <button class="btn-primary"   id="btn-run"    onclick="processar()">▶ Formatar, Mesclar e Copiar</button>
   <button class="btn-secondary"                 onclick="limpar()">🗑 Limpar Tudo</button>
@@ -4113,6 +4451,32 @@ _HTML_UI = r"""
 
   function setStats(txt) { $('stats').innerText = txt; }
 
+  // ── Painel de tipografia: tamanhos de fonte ──
+  const _FONTES_PADRAO = {
+    bloco: 94, juris: 80, questao: 80, corpo: 100, ident: 80, meta: 66,
+    fontes: 72, gabarito: 80, marcas: 65, incidencia: 76, esquema: 86,
+    tabela: 88
+  };
+
+  function coletarFontes() {
+    const out = {};
+    for (const chave in _FONTES_PADRAO) {
+      const el = $('sl-f-' + chave);
+      if (el) out[chave] = parseFloat(el.value);
+    }
+    return out;
+  }
+
+  function restaurarFontes() {
+    for (const chave in _FONTES_PADRAO) {
+      const el = $('sl-f-' + chave);
+      if (!el) continue;
+      el.value = _FONTES_PADRAO[chave];
+      updateVal('val-f-' + chave, el.value + '%');
+    }
+    setStatus('↩️  Tamanhos restaurados. Clique em Formatar para aplicar.', 'var(--accent-gold)');
+  }
+
   async function processar() {
     const btn = $('btn-run');
     btn.innerHTML = '⏳ Processando...';
@@ -4140,7 +4504,7 @@ _HTML_UI = r"""
     try {
       const result = await google.colab.kernel.invokeFunction(
         '_processar_callback', [texto, formato, espaco, par, inc, ali, comentarios,
-          chars, assuntoTipo, entrelinha, entrelinhaComentario], {}
+          chars, assuntoTipo, entrelinha, entrelinhaComentario, coletarFontes()], {}
       );
       const data = result.data['application/json'];
       $('output-texto').value = data.resultado;
@@ -4185,7 +4549,8 @@ _HTML_UI = r"""
     try {
       const result = await google.colab.kernel.invokeFunction(
         '_mesclar_callback', [html, comentarios,
-          parseFloat($('sl-entrelinha-comentario').value), _vizCartoes], {}
+          parseFloat($('sl-entrelinha-comentario').value), _vizCartoes,
+          coletarFontes()], {}
       );
       const data = result.data['application/json'];
       if (!data.erro) {
@@ -4337,7 +4702,8 @@ async function _copiarTexto(txt, isAuto) {
     try {
       const result = await google.colab.kernel.invokeFunction(
         '_exportar_callback', [texto, comentarios, espaco, par, inc, ali, chars, assunto_tipo,
-          parseFloat($('sl-entrelinha').value), parseFloat($('sl-entrelinha-comentario').value)], {}
+          parseFloat($('sl-entrelinha').value), parseFloat($('sl-entrelinha-comentario').value),
+          coletarFontes()], {}
       );
       const data = result.data['application/json'];
       if (data.erro) {
@@ -4393,7 +4759,8 @@ async function _copiarTexto(txt, isAuto) {
         document.querySelector('input[name="assunto_tipo"]:checked').value,
         $('pdf-layout').value, $('pdf-titulo').value, $('pdf-comentarios').checked,
         parseInt($('pdf-fonte').value) || 9, $('pdf-css').value, arquivoAnki,
-        parseFloat($('sl-entrelinha').value), parseFloat($('sl-entrelinha-comentario').value)];
+        parseFloat($('sl-entrelinha').value), parseFloat($('sl-entrelinha-comentario').value),
+        coletarFontes()];
       const result = await google.colab.kernel.invokeFunction('_exportar_pdf_callback', args, {});
       const data = result.data['application/json'];
       if (data.erro) { setStatus(data.stats, 'var(--accent-red)'); return; }
@@ -4602,7 +4969,7 @@ function vizPopularHtml(htmlStr) {
 
     try {
       const result = await google.colab.kernel.invokeFunction(
-        '_atualizar_callback', [conteudoAnki, comentarios], {}
+        '_atualizar_callback', [conteudoAnki, comentarios, coletarFontes()], {}
       );
       const data = result.data['application/json'];
       setStats(data.stats);

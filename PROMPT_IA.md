@@ -78,13 +78,16 @@ O corpo do bloco é o **material transcrito**, não um texto novo.
   parênteses (`(PGEPB-2021)`), a grafia do material e as vírgulas.
 - **Não acrescente rótulos.** Nada de `ENUNCIADO:`, `RESPOSTA:`,
   `GABARITO:`, `FUNDAMENTO:`, `BANCA:`, `TRIBUNAL:`, `PROCESSO:`,
-  `RELATOR:`, `EMENTA:`, `AUTOR:`, `OBRA:`, `TESE:`. Se a informação
-  precisa ser transcrita, ela vai como está no material, sem prefixo.
+  `RELATOR:`, `EMENTA:`, `AUTOR:`, `OBRA:`, `TESE:`, `VERBETE:`. Se a
+  informação precisa ser transcrita, ela vai como está no material, sem
+  prefixo.
 - **Não use campos e não use título.** Sem `Questão - ...`, sem
   `Incidência - ...`, sem `Conceito de ...`.
 - **Não resuma, não reescreva, não complete.** Se o material não tem
   gabarito, não invente. Se o material não tem ementa, não invente. Se o
   material não tem fundamento, não invente.
+- **Única exceção: o verbete da jurisprudência**, que é uma síntese da
+  orientação já firmada no material (ver a seção `VERBETE`).
 - **Não use Markdown**, exceto `**negrito**` e `*itálico*` que já
   existam no material.
 - **Linha em branco** entre blocos é permitida e recomendada.
@@ -192,6 +195,54 @@ STF · RE 695911/RR · Min. Dias Toffoli · 14/12/2020 · Plenário, Tema 492
   (o padrão `#Questão de concurso:`), emita essa questão como bloco
   `QUESTAO` ancorado no mesmo dispositivo, e o julgado como
   `JURISPRUDENCIA`.
+- **Emita o verbete** como última linha do bloco, conforme a seção
+  `VERBETE (a orientação firmada pelo tribunal)` abaixo.
+
+### VERBETE (a orientação firmada pelo tribunal)
+
+O **verbete** é a síntese da orientação jurídica firmada pelo tribunal: a
+tese que o órgão consolidou **após decisões repetidas no mesmo sentido**
+(reincidência, súmula, tema fixado, orientação firm's, julgados
+reiterados). Ele não é a ementa do caso concreto nem o resumo do material:
+é a **regra** que o estudante precisa levar para a prova.
+
+- **Onde:** como **última linha do corpo** do bloco `JURISPRUDENCIA`,
+  **logo depois da ementa** (e antes da linha `Incidência em provas:`).
+- **Marque com asteriscos:** a linha do verbete vai entre `*` no início e
+  no fim (`*O STF orienta que...*`). O formatador reconhece esses
+  asteriscos e renderiza a linha em itálico. Sem os asteriscos, a linha
+  sai como prosa comum.
+- **Sem rótulo.** Sem `VERBETE:`, sem `TESE FIRMA:`, sem `ORIENTAÇÃO:`.
+  A linha é a frase, e nada mais.
+- **Uma ou duas frases, em prosa.** Em linguagem de prova, com o objeto da
+  regra e a exceção, quando ela existir no material.
+- **Firme apenas o que o material sustenta.** O verbete não pode:
+  - inventar tese que o material não traz;
+  - generalizar um julgado específico em regra de tribunal;
+  - criar número de processo, relator, data, súmula ou tema que não
+    esteja no material;
+  - antecipar conclusão que o material deixa em aberto.
+- **Se o material não permitir extrair a tese consolidada, não emita
+  verbete.** É preferível o bloco sem verbete do que um verbete
+  inventado. Casos em que o verbete **deve** ser emitido:
+  - o material traz **reincidência expressa** (`reincidência`, `julgados
+    anteriores no mesmo sentido`, `orientação consolidada`);
+  - o material traz **súmula, tema, precedente fixado ou
+    `leading case`** com a regra enunciada;
+  - o material traz **vários julgados** do mesmo tribunal sobre o mesmo
+    ponto, com a mesma conclusão.
+- **Não use verbete no bloco `DOUTRINA`.** A tese do autor já é a tese
+  dele, transcrita.
+
+Exemplo de bloco com verbete:
+
+```
+JURISPRUDENCIA|Art. 2º, § 8º||74
+STF · RE 695911/RR · Min. Dias Toffoli · 14/12/2020 · Plenário, Tema 492
+É inconstitucional a cobrança, por parte de associação, de taxa de manutenção e conservação de loteamento imobiliário urbano de proprietário não associado até o advento da Lei 13.465/2017.
+*O STF orienta que a associação de loteamento não pode cobrar taxa de manutenção e conservação de loteamento de proprietário não associado.*
+Incidência em provas:
+```
 
 **DOUTRINA** — use para teses e citações de livros/autores.
 
@@ -309,6 +360,8 @@ TABELA|Art. 2º, § 1º e 2º||85
 JURISPRUDENCIA|Art. 2º, § 8º||74
 STF · RE 695911/RR · Min. Dias Toffoli · 14/12/2020 · Plenário, Tema 492
 É inconstitucional a cobrança, por parte de associação, de taxa de manutenção e conservação de loteamento imobiliário urbano de proprietário não associado até o advento da Lei 13.465/2017.
+*O STF orienta que a associação de loteamento não pode cobrar taxa de manutenção e conservação de loteamento de proprietário não associado.*
+Incidência em provas:
 
 DOUTRINA|Art. 2º||60
 FRANCISCO, R.V.; GOLDFINGER, F.I. · Direito Urbanístico, v.44 · Juspodivm · 2021 · p. 247

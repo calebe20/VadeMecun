@@ -84,7 +84,7 @@ em blocos, ancora cada bloco no dispositivo e **transcreve literalmente**.
 |---|---|
 | `QUESTAO` | o enunciado transcrito, com a banca inline e o gabarito no fim |
 | `COMENTARIO` | todos os `#Dica`, `#Atenção`, `#DOD` do material, na ordem |
-| `JURISPRUDENCIA` | identificação numa linha (`STF · RE 695911 · ...`) + ementa em prosa |
+| `JURISPRUDENCIA` | identificação numa linha (`STF · RE 695911 · ...`) + ementa em prosa + verbete final em itálico (tese firmada pelo tribunal) |
 | `DOUTRINA` | referência numa linha (`AUTOR · OBRA · EDITORA · ANO · p. N`) + tese em prosa |
 
 Regras que o prompt impõe:
@@ -129,7 +129,7 @@ lá (verificado por comparação automática), e a interface visual é a mesma.
 | `QUESTAO` | enunciado, resposta e fundamento, em caixa azul |
 | `TABELA` | vira `<table>` de verdade, com bordas |
 | `ESQUEMA` | monoespaçado, dentro de caixa própria |
-| `JURISPRUDENCIA` | tribunal, processo, relator, data, leading e ementa |
+| `JURISPRUDENCIA` | tribunal, processo, relator, data, leading, ementa e verbete |
 | `DOUTRINA` | autor, obra, editora, ano, página e tese |
 | `COMENTARIO` | texto corrido, com **negrito** e *itálico* |
 | `NOTA` | texto curto |
