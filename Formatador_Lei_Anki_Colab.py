@@ -120,6 +120,21 @@ def _normalizar_espacos(texto):
     return texto.strip()
 
 
+def _colapsar_espacos(texto):
+    """
+    Remove espacos duplicados do texto que vem do material.
+
+    O material da IA traz as marcacoes de banca com espacos duplos:
+    '(PGM-Fortaleza/CE-2017)  (PGM-POA/RS-2022)'. Isso aparece no
+    texto limpo e no HTML, com um espaco a mais entre as marcacoes.
+    """
+    if not texto:
+        return texto
+    texto = re.sub(r'[ \t\u00a0]{2,}', ' ', texto)
+    texto = re.sub(r' ?\n ?', '\n', texto)
+    return texto.strip()
+
+
 def _eh_titulo_descritivo(linha):
     t = _limpar_anotacoes(linha.strip())
     if not t: return False
@@ -919,6 +934,36 @@ def _extrair_enunciado_questao(corpo):
     return '\n'.join(linhas).strip()
 
 
+_RE_INICIO_QUESTAO = re.compile(r'^\(')
+
+
+def _dividir_questoes(enunciado):
+    """
+    Divide o enunciado do material em questoes individuais.
+
+    Cada questao comeca com a marca da banca entre parenteses, no
+    inicio da linha: '(DPERO-2023-CESPE) Julgue o item...'. As linhas
+    seguintes sao continuacao do enunciado e nao viram questao nova.
+    """
+    if not enunciado:
+        return []
+
+    blocos = []
+    atual = []
+    for linha in enunciado.split('\n'):
+        t = linha.strip()
+        if not t:
+            continue
+        if _RE_INICIO_QUESTAO.match(t) and atual:
+            blocos.append('\n'.join(atual))
+            atual = []
+        atual.append(t)
+    if atual:
+        blocos.append('\n'.join(atual))
+
+    return blocos
+
+
 def _extrair_gabarito_questao(corpo):
     """
     Devolve a resposta da questao, se o material trouxer.
@@ -1009,7 +1054,7 @@ def _extrair_incidencia(corpo):
 
         linhas.append(t)
 
-    return '\n'.join(linhas), incidencia, bancas
+    return '\n'.join(linhas), _colapsar_espacos(incidencia), bancas
 
 
 # Tags liberadas no HTML que vem da IA.
@@ -1095,6 +1140,7 @@ def _higienizar_html(texto):
 
 def _md_para_html(texto):
     """Negrito e italico do Markdown, com o resto escapado."""
+    texto = _colapsar_espacos(texto)
     texto = html_lib.escape(texto)
     texto = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', texto, flags=re.DOTALL)
     texto = re.sub(r'(?<![\w*])\*([^*\n]+?)\*(?![\w*])', r'<i>\1</i>',
@@ -1430,6 +1476,8 @@ def _parse_blocos_tipados(comentarios_txt):
         nonlocal atual, partes
         if atual is None:
             return None
+        # O corpo nao e normalizado aqui: o bloco ESQUEMA guarda um
+        # diagrama alinhado, que perderia o espacamento.
         atual['corpo'] = '\n'.join(partes).strip('\n')
         bloco = atual
         atual = None
@@ -2364,7 +2412,7 @@ body {
 
 /* Caixa de conteúdo. */
 .estilo-lei {
-    padding: 10px 12px;
+    padding: 3px 3px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2442,10 +2490,10 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 .layout-combined .pdf-flow,
 .layout-three .pdf-flow {
     column-count: 2;
-    column-gap: 8mm;
+    column-gap: 6mm;
     column-rule: 1px solid #d0d0d0;
     column-fill: balance;
-    padding: 10px 12px;
+    padding: 3px 3px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2454,13 +2502,13 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 /* TRÊS COLUNAS: menor espaço entre elas para aproveitar a largura do A4. */
 .layout-three .pdf-flow {
     column-count: 3;
-    column-gap: 5mm;
+    column-gap: 4.5mm;
 }
 
 /* TEXTO CORRIDO: caixa em toda a largura. */
 .layout-continuous .pdf-flow {
     column-count: 1;
-    padding: 10px 12px;
+    padding: 3px 3px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2468,7 +2516,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 
 /* SEQUENCIAL: cada campo em sua caixa. */
 .layout-split .estilo-lei {
-    padding: 10px 12px;
+    padding: 3px 3px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2479,8 +2527,8 @@ details.comentario {
     display: block;
     font-size: .94em;
     line-height: var(--pdf-entrelinha-comentario) !important;
-    margin: 2px 0 3px;
-    padding: 2px 4px;
+    margin: 2px 0;
+    padding: 2px 3px;
     background: #eae4da;
     font-style: normal;
     break-inside: auto;
@@ -2689,7 +2737,51 @@ details.comentario[data-bloco] table th {
 }
 
 details.comentario[data-bloco="questao"] {
-    background: #e4ecf2;
+    /* A questao vira caixa: borda completa em vez de bloco colorido. */
+    background: #fafcfd;
+    border: 1px solid #9db4c6;
+    padding: 2px 3px;
+    margin: 2px 0;
+}
+
+/* SEPARADOR ENTRE QUESTOES
+
+ A linha fica entre duas questoes de verdade: nunca acima da primeira
+ questao de um artigo, e nunca acima da primeira questao do dispositivo.
+
+ Quando duas questoes vem em caixas <details> seguidas, as caixas sao
+ fundidas visualmente: a borda de baixo da primeira e a de cima da
+ segunda saem, e a linha divisoria fica no meio.
+*/
+details.comentario[data-bloco="questao"]:has(
+    + details.comentario[data-bloco="questao"]
+) {
+    margin-bottom: 0;
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    padding-bottom: 3px;
+}
+
+details.comentario[data-bloco="questao"] + details.comentario[data-bloco="questao"] {
+    margin-top: 0;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    padding-top: 0;
+}
+
+details.comentario[data-bloco="questao"] + details.comentario[data-bloco="questao"] > .bloco-corpo {
+    border-top: 1px solid #aaa;
+    padding-top: 3px;
+}
+
+/* Mais de uma questao dentro do MESMO <details>: a linha entra a
+   partir da segunda, nunca antes da primeira. */
+details.comentario[data-bloco="questao"] .bloco-linha + .bloco-linha {
+    border-top: 1px solid #aaa;
+    margin-top: 3px;
+    padding-top: 3px;
 }
 
 details.comentario[data-bloco="jurisprudencia"] {
@@ -2697,7 +2789,8 @@ details.comentario[data-bloco="jurisprudencia"] {
     /* A jurisprudencia ganha caixa propria: borda completa para
        separar do texto da lei. */
     border: 1px solid #b9b3d0;
-    padding: 3px 5px;
+    padding: 2px 3px;
+    margin: 2px 0;
 }
 
 details.comentario[data-bloco="doutrina"] {
@@ -3341,9 +3434,14 @@ def _mesclar_no_texto(texto_formatado, comentarios_txt):
         if alvo is None or alvo in alvos_inseridos:
             return
         for bloco in grupos.get(alvo, []):
+            # O ESQUEMA guarda um diagrama alinhado: o espacamento faz
+            # parte do desenho e nao pode ser normalizado.
+            colapsar = bloco['tipo'] != 'ESQUEMA'
             for linha in bloco['corpo'].split('\n'):
                 if linha.strip():
-                    resultado.append(linha.strip())
+                    resultado.append(
+                        _colapsar_espacos(linha) if colapsar else linha.strip()
+                    )
             resultado.append('')
         alvos_inseridos.add(alvo)
 

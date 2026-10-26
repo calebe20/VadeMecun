@@ -1,5 +1,55 @@
 # Regras de trabalho neste repositorio
 
+## Eficiencia: rapido e objetivo
+
+Este repositorio e pequeno e o codigo e direta. O trabalho padrao e: **faca a
+mudanca, rode `make gate`, reporte**. O resto e desnecessario.
+
+### Faca
+
+- Antes de comecar, transforme o pedido do usuario em um checklist curto, com
+  um item por requisito concreto. Use a ferramenta de lista de tarefas para
+  registrar. Isso garante que nada do que foi pedido fique para tras.
+- No fim, revise o checklist: cada item precisa estar feito, com teste ou
+  validacao que o comprove. Se algum item nao pode ser feito, diga qual e por
+  que, em vez de silenciar.
+- Leia so o trecho do codigo que a mudanca toca. Use `grep` para localizar, nao
+  leia o arquivo inteiro.
+- Antes de perguntar algo ao usuario, pergunte a si mesmo se o repositorio ja
+  responde. Se responder, vae em frente.
+- Uma pergunta so, e so quando a resposta errada custar caro (apagar dado,
+  mudar contrato, quebrar producao). Casos triviais: escolha o padrao
+  razoavel, faca e diga o que escolheu.
+- Mudanca visual pequena (CSS, cor, espaco, borda): edite e valide. Nao
+  preciso de spec nova, de script de medicao, nem de PDF renderizado para
+  confirmar. O `make gate` basta.
+- Se a spec da entrega anterior ja cobre a mudanca, use essa spec em vez de
+  criar outra.
+
+### Nao faca
+
+- Nao invente itens no checklist que o usuario nao pediu. O checklist reflete o
+  pedido, nao o escopo ideal da IA.
+- Nao instale pacote, nao baixe navegador, nao crie script auxiliar, nao
+  renderize PDF, nao monte grafico ou planilha para "conferir" uma mudanca
+  simples. Isso custa minutos e nao agrega.
+- Nao leia imagens, PDF ou capture tela para descrever o resultado. Descreva
+  pelo codigo e pelo texto.
+- Nao invente requisito, nao "melhore" codigo adjacente, nao renomeie, nao
+  reformate, nao reorganize arquivo. A entrega e o que foi pedido, nada mais.
+- Nao escreva documentacao a mais do que a solicitada. Nao gere README, guia
+  ou resumo que o usuario nao pediu.
+- Nao reexecute validacao que ja passou. `make gate` uma vez, no fim.
+- Nao espere confirmacao para o que ja foi pedido. Pedido feito e trabalho a
+  fazer.
+
+### Resumo da entrega
+
+Sai com o resultado, o que mudou em uma frase e o `make gate` passando. Sem
+relatorio de processo, sem lista do que nao foi feito, sem pergunta final.
+O checklist fica registrado na lista de tarefas da sessao, com tudo marcado
+como concluido.
+
 ## Desenvolvimento guiado por especificacao
 
 - Para qualquer funcionalidade nova, alteracao de comportamento, mudanca de dados, integracao externa ou refatoracao de impacto, localize uma especificacao aplicavel em `specs/` ou crie uma nova a partir de `specs/TEMPLATE.md` antes de implementar.
@@ -40,7 +90,9 @@
 
 - O PDF mira A4 para impressora laser (L3150). Margem de 6mm, fonte 9px, entrelinha 1.0.
 - A hifenizacao e feita por software com `pyphen`, porque o Chromium nao aplica `hyphens: auto`. O `pyphen` nao vem no Colab: o formatador tenta instalar na primeira execucao e, se falhar, o PDF sai sem hifenizacao mas continua sendo gerado.
-- Ao mexer no CSS do PDF, meca o resultado renderizando um PDF de verdade e comparando caracteres por pagina. A intuicao erra.
+- So meca com PDF renderizado quando a mudanca mexer na densidade da pagina
+  (margem, fonte, entrelinha, padding da coluna). Mudanca de cor, borda ou
+  separador se confirma lendo o CSS.
 
 ## Entrega ao usuario
 

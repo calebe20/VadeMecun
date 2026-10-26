@@ -413,7 +413,7 @@ def test_outros_blocos_mantem_so_o_fundo(fmt):
     """Os demais blocos ficam com fundo, sem borda."""
     css = fmt._PDF_CSS
 
-    for tipo in ('questao', 'doutrina', 'tabela', 'esquema', 'nota'):
+    for tipo in ('doutrina', 'tabela', 'esquema', 'nota'):
         inicio = css.find('details.comentario[data-bloco="%s"]' % tipo)
         assert inicio != -1, 'faltou a regra do tipo %s' % tipo
 
@@ -422,6 +422,102 @@ def test_outros_blocos_mantem_so_o_fundo(fmt):
         assert 'border' not in regra, (
             'o tipo %s nao deveria ter borda: %s' % (tipo, regra.strip())
         )
+
+
+# ------------------------------------------------------------------
+# Diagramacao das questoes (spec 0003)
+# ------------------------------------------------------------------
+
+def _regra_bloco(fmt, tipo, tamanho=300):
+    """Devolve o texto da regra CSS do tipo de bloco."""
+    css = fmt._PDF_CSS
+    inicio = css.find('details.comentario[data-bloco="%s"]' % tipo)
+    assert inicio != -1, 'faltou a regra do tipo %s' % tipo
+    return css[inicio:inicio + tamanho]
+
+
+def test_questao_vira_caixa_com_borda(fmt):
+    """A questao deixa de ser bloco colorido e vira caixa."""
+    regra = _regra_bloco(fmt, 'questao')
+
+    assert 'border:' in regra, 'a questao precisa de borda: %s' % regra
+    assert '#e4ecf2' not in regra, 'o fundo azul da questao saiu'
+
+
+def test_separador_entre_questoes_adjacentes(fmt):
+    """Duas questoes seguidas precisam de uma linha de separacao."""
+    css = fmt._PDF_CSS
+
+    seletor = (
+        'details.comentario[data-bloco="questao"].bloco-questao-separada '
+        '.bloco-corpo'
+    )
+    assert seletor in css, 'faltou a regra do separador entre questoes'
+
+    inicio = css.find(seletor)
+    regra = css[inicio:inicio + 300]
+    regra = regra[:regra.find('}')]
+
+    assert 'border-top: 1px solid #aaa' in regra, (
+        'o separador precisa de uma linha dentro da caixa: %s' % regra.strip()
+    )
+
+
+def test_js_marca_a_questao_separada(fmt):
+    """O script do PDF precisa marcar a questao que leva a linha."""
+    html = fmt.gerar_html_pdf([], 'three', 'T', True, 9, '', 2, 2, 8, 8,
+                              1.0, 1.0, 'capitulo')
+
+    assert 'bloco-questao-separada' in html
+    assert 'data-bloco="questao"' in html
+
+
+def test_caixa_da_coluna_fica_mais_estreita(fmt):
+    """O padding interno da caixa da coluna precisa ser menor."""
+    css = fmt._PDF_CSS
+
+    assert 'padding: 10px 12px' not in css, 'o padding antigo da coluna ficou'
+
+    inicio = css.find('.estilo-lei {')
+    assert inicio != -1, 'faltou a regra da caixa de conteudo'
+    regra = css[inicio:inicio + 200]
+    regra = regra[:regra.find('}')]
+
+    assert 'padding: 3px 3px' in regra, (
+        'a caixa da coluna deveria usar padding menor: %s' % regra.strip()
+    )
+
+
+# ------------------------------------------------------------------
+# Espacos duplicados do material (spec 0003)
+# ------------------------------------------------------------------
+
+BLOCO_COM_ESPACO_DUPLO = """JURISPRUDENCIA|Art. 1º|Julgado|74
+TRIBUNAL: STF
+EMENTA: Ementa.
+INCIDENCIA: (PGM-Fortaleza/CE-2017)  (PGM-POA/RS-2022) (MPSP-2023) (DPERS2025)
+"""
+
+
+def test_espaco_duplo_some_das_marcacoes_no_html(fmt):
+    """O espaco duplo do material nao pode chegar ao HTML."""
+    html, _ = fmt.formatar_para_anki(fmt.formatar_texto_legal(LEI_COMPLETA))
+    html = fmt.mesclar_comentarios(html, BLOCO_COM_ESPACO_DUPLO)
+
+    assert '  ' not in html.replace('<br>', '\n'), 'sobrou espaco duplo'
+    assert '(PGM-Fortaleza/CE-2017) (PGM-POA/RS-2022)' in html
+
+
+def test_espaco_duplo_some_das_marcacoes_no_texto_limpo(fmt):
+    """O espaco duplo do material nao pode chegar ao texto limpo."""
+    out = fmt._processar_callback(
+        LEI_COMPLETA, 'texto', 2, 2, 8, 8, BLOCO_COM_ESPACO_DUPLO,
+        1500, 'capitulo', 1.0, 1.0
+    )
+    resultado = out.data['resultado']
+
+    assert '  ' not in resultado, 'sobrou espaco duplo no texto'
+    assert '(PGM-Fortaleza/CE-2017) (PGM-POA/RS-2022)' in resultado
 
 
 # ------------------------------------------------------------------
