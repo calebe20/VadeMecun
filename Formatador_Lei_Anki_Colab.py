@@ -1304,6 +1304,73 @@ def _render_doutrina(corpo):
     return partes
 
 
+_RE_ABRE_QUESTAO = re.compile(
+    r'^\(\s*[A-Z][A-Za-zÀ-ú0-9./·\s-]{1,40}\d{4}[A-Za-z0-9./·\s-]*\)\s*:?'
+)
+
+
+def _dividir_questoes(enunciado):
+    """
+    Separa o enunciado em questoes.
+
+    No material, cada questao abre com a marca da banca entre parenteses
+    -- `(DPESP-2015-FCC):`, `(PGM-POA/RS-2022-Fundatec):`. Quando o bloco
+    traz mais de uma questao, cada uma vira um paragrafo proprio, para o
+    PDF poder desenhar o divisor ENTRE elas. As quebras de linha de um
+    mesmo enunciado sao remontadas num paragrafo so.
+    """
+    questoes = []
+    for linha in (enunciado or '').split('\n'):
+        texto = linha.strip()
+        if not texto:
+            continue
+        if questoes and _RE_ABRE_QUESTAO.match(texto):
+            questoes.append(texto)
+        elif questoes and questoes[-1].endswith('-'):
+            # Quebra de linha do material com hifenizacao: remonta a
+            # palavra em vez de deixar 'pre- dominantemente'.
+            questoes[-1] = questoes[-1] + texto
+        elif questoes:
+            questoes[-1] = questoes[-1] + ' ' + texto
+        else:
+            questoes.append(texto)
+    return questoes
+
+
+def _render_questoes(enunciado, gabarito, corpo):
+    """
+    Renderiza as questoes de um bloco QUESTAO, uma por linha.
+
+    Cada questao e' um `bloco-questao`. O divisor do PDF so e' aplicado
+    entre dois `bloco-questao` seguidos: a primeira -- e a unica, quando
+    so ha uma -- nao recebe linha nenhuma.
+    """
+    questoes = _dividir_questoes(enunciado)
+
+    if not questoes:
+        if gabarito:
+            return ['<div class="bloco-linha bloco-questao">'
+                    '<span class="bloco-gabarito">%s</span></div>'
+                    % _md_para_html(gabarito)]
+        paragrafos = [p.strip() for p in corpo.split('\n') if p.strip()]
+        return ['<div class="bloco-linha bloco-questao">%s</div>'
+                % '<br>'.join(_md_para_html(p) for p in paragrafos)]
+
+    partes = ['<div class="bloco-linha bloco-questao">%s</div>'
+              % _md_para_html(questao)
+              for questao in questoes]
+
+    if gabarito:
+        # O gabarito entra inline, no fim da ultima questao.
+        partes[-1] = (
+            partes[-1][:-len('</div>')]
+            + ' <span class="bloco-gabarito">%s</span></div>'
+            % _md_para_html(gabarito)
+        )
+
+    return partes
+
+
 def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
     """Gera o HTML de um bloco tipado."""
     # O subtitulo NAO aparece: o bloco mostra apenas o tipo.
@@ -1350,23 +1417,11 @@ def _render_bloco_tipado(tipo, subtitulo, corpo, aberta=True, fontes=None):
         # O corpo do bloco QUESTAO e o ENUNCIADO, transcrito do material,
         # sem campos e sem rotulos. A marca da banca vem inline, tal
         # como aparece no material.
-        enunciado = _extrair_enunciado_questao(corpo)
-        gabarito = _extrair_gabarito_questao(corpo)
-        if enunciado:
-            linha = _md_para_html(enunciado)
-            if gabarito:
-                # O gabarito entra inline, no fim do enunciado.
-                linha += (' <span class="bloco-gabarito">%s</span>'
-                          % _md_para_html(gabarito))
-            partes.append('<div class="bloco-linha">%s</div>' % linha)
-        elif gabarito:
-            partes.append('<div class="bloco-linha">'
-                          '<span class="bloco-gabarito">%s</span></div>'
-                          % _md_para_html(gabarito))
-        if not partes:
-            paragrafos = [p for p in corpo.split('\n') if p.strip()]
-            partes.append('<div class="bloco-linha">%s</div>'
-                          % '<br>'.join(_md_para_html(p) for p in paragrafos))
+        partes.extend(_render_questoes(
+            _extrair_enunciado_questao(corpo),
+            _extrair_gabarito_questao(corpo),
+            corpo,
+        ))
 
     elif tipo == 'JURISPRUDENCIA':
         partes.extend(_render_jurisprudencia(corpo))
@@ -2364,7 +2419,7 @@ body {
 
 /* Caixa de conteúdo. */
 .estilo-lei {
-    padding: 10px 12px;
+    padding: 6px 8px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2445,7 +2500,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
     column-gap: 8mm;
     column-rule: 1px solid #d0d0d0;
     column-fill: balance;
-    padding: 10px 12px;
+    padding: 6px 8px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2460,7 +2515,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 /* TEXTO CORRIDO: caixa em toda a largura. */
 .layout-continuous .pdf-flow {
     column-count: 1;
-    padding: 10px 12px;
+    padding: 6px 8px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2468,19 +2523,25 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 
 /* SEQUENCIAL: cada campo em sua caixa. */
 .layout-split .estilo-lei {
-    padding: 10px 12px;
+    padding: 6px 8px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
 }
 
-/* Comentários com entrelinha própria. */
+/*
+COMENTÁRIOS COM ENTRELINHA PRÓPRIA
+
+O espaço entre os blocos vem de um lugar só: o padding interno da
+caixa. A margem externa é zero para não somar dois espaçamentos
+(dentro e fora da caixa) entre um bloco e o seguinte.
+*/
 details.comentario {
     display: block;
     font-size: .94em;
     line-height: var(--pdf-entrelinha-comentario) !important;
-    margin: 2px 0 3px;
-    padding: 2px 4px;
+    margin: 1px 0;
+    padding: 1px 4px;
     background: #eae4da;
     font-style: normal;
     break-inside: auto;
@@ -2716,6 +2777,39 @@ details.comentario[data-bloco="nota"] {
     background: #f0ece2;
 }
 
+/*
+DIVISOR ENTRE QUESTÕES
+
+O divisor existe para separar uma questão da seguinte. Por isso ele é
+aplicado pelo seletor de irmão adjacente (`+`), que só casa a partir da
+segunda questão:
+
+- a primeira questão do bloco não recebe linha nenhuma;
+- um bloco com uma única questão nunca recebe linha;
+- duas caixas de questão seguidas ficam separadas por uma linha, para
+  não colarem uma na outra.
+
+O `!important` é necessário porque o CSS do Anki colado no painel
+também pode desenhar essa linha no primeiro bloco.
+*/
+details.comentario[data-bloco="questao"] .bloco-questao {
+    border-top: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+details.comentario[data-bloco="questao"] .bloco-questao + .bloco-questao {
+    border-top: 1px solid #aaa !important;
+    margin-top: 2px !important;
+    padding-top: 2px !important;
+}
+
+.estilo-lei > details.comentario[data-bloco="questao"]
+    + details.comentario[data-bloco="questao"] {
+    border-top: 1px solid #aaa !important;
+    margin-top: 2px !important;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -2834,6 +2928,56 @@ def _hifenizar_texto(texto):
         return _hifenizar_palavra(m.group(1))
 
     return _RE_PALAVRA.sub(sub, texto)
+
+
+_JS_DIVISOR_QUESTOES = r"""
+    // O divisor separa uma questão da SEGUINTE: nunca aparece acima da
+    // primeira e não aparece quando o bloco tem uma única questão.
+    // O estilo vai inline e com !important porque o CSS do Anki colado
+    // no painel também pode desenhar essa linha no primeiro bloco.
+    const semLinhaSuperior = el => {
+        el.style.setProperty('border-top', '0', 'important');
+        el.style.setProperty('margin-top', '0', 'important');
+    };
+
+    // A caixa do bloco só perde a borda de cima quando ela é uma linha
+    // solta (separador). Se a caixa tem moldura nos outros lados, a
+    // borda de cima faz parte da moldura e fica.
+    const semSeparadorNaCaixa = el => {
+        const estilo = getComputedStyle(el);
+        const temMoldura = ['left', 'right', 'bottom'].some(
+            lado => parseFloat(estilo.getPropertyValue('border-' + lado + '-width')) > 0
+        );
+        if (!temMoldura) semLinhaSuperior(el);
+    };
+
+    document.querySelectorAll('.estilo-lei').forEach(caixa => {
+        const filhos = Array.from(caixa.children);
+
+        filhos.forEach((filho, indice) => {
+            if (filho.tagName !== 'DETAILS') return;
+
+            const ehQuestao = filho.dataset.bloco === 'questao';
+            const anterior = filhos[indice - 1];
+            const questaoSeguida = ehQuestao && anterior
+                && anterior.tagName === 'DETAILS'
+                && anterior.dataset.bloco === 'questao';
+
+            if (questaoSeguida) {
+                filho.style.setProperty(
+                    'border-top', '1px solid #aaa', 'important'
+                );
+                filho.style.setProperty('margin-top', '2px', 'important');
+            } else if (ehQuestao) {
+                semSeparadorNaCaixa(filho);
+            }
+
+            const questoes = filho.querySelectorAll('.bloco-questao');
+            if (questoes.length) semLinhaSuperior(questoes[0]);
+        });
+    });
+
+"""
 
 
 def gerar_html_pdf(cartoes, layout_mode='three',
@@ -2966,7 +3110,7 @@ def gerar_html_pdf(cartoes, layout_mode='three',
     }
     """
 
-    js = r"""
+    js = (r"""
     // No modo Seção, o assunto já aparece na barra do cabeçalho do PDF.
     if (MODO_SECAO) {
         const normalizarTitulo = texto => texto.replace(/\s+/g, ' ').trim().toUpperCase();
@@ -3069,7 +3213,9 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         );
         if (primeiroArtigo) primeiroArtigo.classList.add('pdf-primeiro-artigo');
     });
-
+    """
+    + _JS_DIVISOR_QUESTOES
+    + r"""
     document.querySelectorAll(
         '.estilo-lei span[style]'
     ).forEach(el => {
@@ -3090,7 +3236,7 @@ def gerar_html_pdf(cartoes, layout_mode='three',
             el.style.color = '#333333';
         }
     });
-    """.replace(
+    """).replace(
         'INCLUIR_COMENTARIOS',
         'true' if incluir_comentarios else 'false'
     ).replace('MODO_SECAO', 'true' if assunto_tipo == 'secao' else 'false')

@@ -425,6 +425,133 @@ def test_outros_blocos_mantem_so_o_fundo(fmt):
 
 
 # ------------------------------------------------------------------
+# Divisor entre questoes e espacamento dos blocos
+# ------------------------------------------------------------------
+
+BLOCOS_QUESTOES = """QUESTAO|Art. 2º|Questao|96
+(DPESP-2015-FCC): Comunidade com população pre-
+dominantemente hipossuficiente.
+(PGM-POA/RS-2022-Fundatec): A Regularização Fundiária Urbana está prevista.
+RESPOSTA: Certo
+"""
+
+BLOCO_QUESTAO_UNICA = """QUESTAO|Art. 3º|Questao|80
+(CESPE-2019): Julgue o item.
+"""
+
+
+def _bloco_questao_html(fmt, texto):
+    """Renderiza os blocos de um texto no formato do prompt."""
+    grupos, _ = fmt._parse_blocos_tipados(texto)
+    return ''.join(
+        fmt._render_bloco_tipado(b['tipo'], b['subtitulo'], b['corpo'])
+        for lista in grupos.values() for b in lista
+    )
+
+
+def test_questoes_do_mesmo_bloco_ficam_em_linhas_separadas(fmt):
+    """Bug: duas questoes no mesmo bloco ficavam num paragrafo so.
+
+    Sem paragrafos separados nao ha como desenhar o divisor ENTRE elas.
+    """
+    html = _bloco_questao_html(fmt, BLOCOS_QUESTOES)
+
+    assert html.count('class="bloco-linha bloco-questao"') == 2
+    assert 'pre-dominantemente' in html, 'a quebra hifenizada do material nao foi remontada'
+    assert html.rstrip().endswith('</details>')
+
+
+def test_questao_unica_nao_ganha_divisor(fmt):
+    """Com uma unica questao nao existe nada para separar."""
+    html = _bloco_questao_html(fmt, BLOCO_QUESTAO_UNICA)
+
+    assert html.count('bloco-questao') == 1
+
+
+def test_css_do_divisor_so_casa_a_partir_da_segunda_questao(fmt):
+    """O divisor usa seletor de irmao adjacente: nunca a primeira."""
+    css = fmt._PDF_CSS
+
+    inicio = css.find('details.comentario[data-bloco="questao"] .bloco-questao')
+    assert inicio != -1, 'faltou a regra base do divisor'
+
+    base = css[inicio:]
+    base = base[:base.find('}')]
+    assert 'border-top: 0 !important' in base, (
+        'a primeira questao nao pode receber linha: %s' % base.strip()
+    )
+
+    inicio = css.find(
+        'details.comentario[data-bloco="questao"] .bloco-questao + .bloco-questao'
+    )
+    assert inicio != -1, 'faltou a regra do divisor entre questoes'
+
+    entre = css[inicio:]
+    entre = entre[:entre.find('}')]
+    assert 'border-top: 1px solid #aaa !important' in entre
+
+
+def test_css_separa_duas_caixas_de_questao_seguidas(fmt):
+    """Duas caixas de questao seguidas nao podem colar uma na outra."""
+    css = fmt._PDF_CSS
+    assert (
+        '.estilo-lei > details.comentario[data-bloco="questao"]\n'
+        '    + details.comentario[data-bloco="questao"]'
+    ) in css
+
+
+def test_js_remove_a_linha_acima_da_primeira_questao(fmt):
+    """O CSS do Anki colado no painel tambem pode desenhar essa linha.
+
+    Por isso a primeira questao recebe border-top: 0 inline e com
+    !important, que vence qualquer folha de estilo.
+    """
+    cartoes = fmt.gerar_importacao_anki(
+        LEI_COMPLETA, BLOCOS_QUESTOES, 1500, 2, 2, 8, 8, 'capitulo',
+        _retornar_cartoes=True
+    )
+    html = fmt.gerar_html_pdf(
+        cartoes, 'three', 'T', True, 9, '', 2, 2, 8, 8, 1.0, 1.0, 'capitulo'
+    )
+
+    assert 'semLinhaSuperior' in html
+    assert "setProperty('border-top', '0', 'important')" in html
+    assert "'border-top', '1px solid #aaa', 'important'" in html
+
+
+def test_js_preserva_a_moldura_da_caixa(fmt):
+    """So a linha solta sai: caixa com moldura nos outros lados fica."""
+    html = fmt._JS_DIVISOR_QUESTOES
+
+    assert 'semSeparadorNaCaixa' in html
+    assert 'temMoldura' in html
+    assert "['left', 'right', 'bottom']" in html
+
+
+def test_bloco_nao_soma_margem_e_padding(fmt):
+    """O espacamento entre blocos vem de um lugar so (o padding)."""
+    css = fmt._PDF_CSS
+    inicio = css.find('details.comentario {')
+    regra = css[inicio:]
+    regra = regra[:regra.find('}')]
+
+    assert 'margin: 1px 0' in regra, (
+        'a margem externa precisa ser minima para nao somar com o padding'
+    )
+    assert 'padding: 1px 4px' in regra
+
+
+def test_caixa_do_texto_compactada(fmt):
+    """A caixa que acopla os blocos perdeu o padding de 10px."""
+    inicio = fmt._PDF_CSS.find('.estilo-lei {')
+    regra = fmt._PDF_CSS[inicio:]
+    regra = regra[:regra.find('}')]
+
+    assert 'padding: 6px 8px' in regra
+    assert 'padding: 10px 12px' not in fmt._PDF_CSS
+
+
+# ------------------------------------------------------------------
 # Contrato geral
 # ------------------------------------------------------------------
 
