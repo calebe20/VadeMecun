@@ -432,3 +432,100 @@ def test_simbolos_esperados_existem(fmt, simbolos_esperados):
     """A suite depende destes simbolos; a ausencia quebra o contrato."""
     faltando = [s for s in simbolos_esperados if not hasattr(fmt, s)]
     assert not faltando, 'faltando: %s' % ', '.join(faltando)
+
+
+# ------------------------------------------------------------------
+# Separador entre itens (bug: linha acima da primeira questao da caixa,
+# inclusive quando a caixa tinha uma questao so)
+# ------------------------------------------------------------------
+
+def _html_do_pdf(fmt, blocos=BLOCOS_TIPADOS, lei=LEI_COMPLETA):
+    cartoes = fmt.gerar_importacao_anki(
+        lei, blocos, 1500, 2, 2, 8, 8, 'capitulo', _retornar_cartoes=True
+    )
+    return fmt.gerar_html_pdf(
+        cartoes, 'three', 'T', True, 9, '', 2, 2, 8, 8, 1.0, 1.0, 'capitulo'
+    )
+
+
+def test_separador_so_entre_itens(fmt):
+    """A linha de separacao vale apenas para um item que tem anterior."""
+    html = _html_do_pdf(fmt)
+
+    assert '.estilo-lei > span.pdf-inicio-artigo:not(:first-child)' in html
+    assert '.estilo-lei > span.pdf-inicio-artigo {' not in html, (
+        'voltou a regra que desenha a linha em qualquer artigo, '
+        'inclusive no primeiro item da caixa'
+    )
+
+
+def test_primeiro_item_da_caixa_nao_recebe_separador(fmt):
+    """O primeiro item de cada caixa e marcado para ficar sem linha."""
+    html = _html_do_pdf(fmt)
+
+    # A marcacao e por CAIXA, nao por secao: cada .estilo-lei do PDF
+    # (uma por cartao no layout sequencial) tem o proprio primeiro item.
+    assert ".estilo-lei, .pdf-flow" in html
+    assert 'pdf-sem-separador' in html
+    assert 'body .pdf-sem-separador' in html
+    assert 'border-top: 0 !important' in html.split('body .pdf-sem-separador')[1][:200]
+
+
+def test_separador_fica_acima_da_incidencia(fmt):
+    """A linha separa acima da banca, nao entre a banca e o artigo."""
+    html = _html_do_pdf(fmt)
+
+    assert "anterior.classList.contains('incidencia-dispositivo')" in html
+
+
+def test_caixa_com_uma_questao_nao_tem_linha(fmt):
+    """Com um item so nao ha o que separar: nenhuma linha no topo."""
+    html = _html_do_pdf(
+        fmt,
+        blocos='QUESTAO|Art. 1º|Questao|96\nENUNCIADO: Julgue o item.\nRESPOSTA: Certo\n',
+    )
+
+    # O unico item da caixa e o bloco da questao: ele nao pode ser
+    # marcado como inicio de artigo, que e quem desenha a linha.
+    assert 'pdf-sem-separador' in html
+    assert 'body .pdf-flow > :first-child' in html
+    assert 'body details.comentario[data-bloco] > .bloco-corpo > :first-child' in html
+
+
+def test_questoes_consecutivas_ficam_separadas(fmt):
+    """Duas questoes no mesmo bloco continuam separadas por uma linha."""
+    html = _html_do_pdf(fmt)
+
+    assert ('.bloco-linha + .bloco-linha' in html), (
+        'a linha que separa duas questoes do mesmo bloco sumiu'
+    )
+
+
+# ------------------------------------------------------------------
+# Espacamento das caixas (bug: vao dentro da caixa somado ao de fora)
+# ------------------------------------------------------------------
+
+def test_ultimo_item_nao_empurra_a_borda_da_caixa(fmt):
+    """O ultimo item da caixa nao reserva margem antes do padding."""
+    css = fmt._PDF_CSS
+
+    assert '.estilo-lei > :last-child {' in css
+    trecho = css.split('.estilo-lei > :last-child {')[1][:120]
+    assert 'margin-bottom: 0 !important' in trecho
+
+
+def test_bloco_no_fim_da_caixa_sem_margem(fmt):
+    """O bloco que fecha a caixa tambem nao deixa vao morto."""
+    css = fmt._PDF_CSS
+
+    assert 'details.comentario:last-child {' in css
+    trecho = css.split('details.comentario:last-child {')[1][:120]
+    assert 'margin-bottom: 0 !important' in trecho
+
+
+def test_padding_vertical_das_caixas_compacto(fmt):
+    """O padding vertical da caixa nao pode voltar a 10px."""
+    css = fmt._PDF_CSS
+
+    assert 'padding: 10px 12px' not in css
+    assert css.count('padding: 5px 12px 2px') >= 4

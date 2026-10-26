@@ -2304,7 +2304,7 @@ body {
 
 /* Espaço entre os grupos de assuntos. */
 .note-container {
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     break-inside: auto;
 }
 
@@ -2353,7 +2353,7 @@ body {
 .card-wrapper {
     display: block;
     width: 100%;
-    margin: 0 0 3px;
+    margin: 0 0 2px;
     break-inside: auto;
 }
 
@@ -2364,7 +2364,7 @@ body {
 
 /* Caixa de conteúdo. */
 .estilo-lei {
-    padding: 10px 12px;
+    padding: 5px 12px 2px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2416,6 +2416,17 @@ pela variável --pdf-espaco, inclusive para arquivos Anki já formatados.
     padding-left: var(--pdf-recuo-ali) !important;
 }
 
+/*
+SEM ESPAÇO MORTO NO PÉ DA CAIXA
+
+O último item não empurra a borda da caixa. Sem isso, o vão depois do
+texto somava a margem do último item com o padding da caixa e ainda com
+a margem externa: dois espaçamentos onde o painel configura um.
+*/
+.estilo-lei > :last-child {
+    margin-bottom: 0 !important;
+}
+
 /* Evita entrelinha diferente nos destaques internos. */
 .estilo-lei > span b,
 .estilo-lei > span strong,
@@ -2445,7 +2456,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
     column-gap: 8mm;
     column-rule: 1px solid #d0d0d0;
     column-fill: balance;
-    padding: 10px 12px;
+    padding: 5px 12px 2px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2460,7 +2471,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 /* TEXTO CORRIDO: caixa em toda a largura. */
 .layout-continuous .pdf-flow {
     column-count: 1;
-    padding: 10px 12px;
+    padding: 5px 12px 2px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2468,7 +2479,7 @@ mantém uma caixa por assunto e o fluxo do texto para impressão.
 
 /* SEQUENCIAL: cada campo em sua caixa. */
 .layout-split .estilo-lei {
-    padding: 10px 12px;
+    padding: 5px 12px 2px;
     background: #f3f3f3;
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -2479,7 +2490,7 @@ details.comentario {
     display: block;
     font-size: .94em;
     line-height: var(--pdf-entrelinha-comentario) !important;
-    margin: 2px 0 3px;
+    margin: 2px 0;
     padding: 2px 4px;
     background: #eae4da;
     font-style: normal;
@@ -2514,6 +2525,15 @@ details.comentario[data-bloco] summary {
 
 details.comentario[data-bloco] .bloco-corpo {
     margin-top: 0;
+}
+
+/* O bloco no fim da caixa também não deixa vão morto. */
+details.comentario:last-child {
+    margin-bottom: 0 !important;
+}
+
+details.comentario[data-bloco] .bloco-corpo > :last-child {
+    margin-bottom: 0 !important;
 }
 
 details.comentario summary::marker {
@@ -2954,15 +2974,42 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         )
 
     css_separadores = r"""
-    .estilo-lei > span.pdf-inicio-artigo {
+    /*
+    SEPARADOR ENTRE ITENS
+
+    A linha horizontal serve para separar um item do item anteriormente
+    impresso na mesma caixa. Por isso ela só existe ENTRE dois itens:
+    nunca acima do primeiro item da caixa e nunca quando a caixa tem um
+    item só (sem nada para separar).
+    */
+    .estilo-lei > span.pdf-inicio-artigo:not(:first-child) {
         border-top: 1px solid #aaa !important;
         margin-top: 6px !important;
         padding-top: 5px !important;
     }
-    .estilo-lei > span.pdf-inicio-artigo.pdf-primeiro-artigo {
+
+    .estilo-lei > span.pdf-inicio-artigo.pdf-primeiro-artigo,
+    .estilo-lei > span.pdf-inicio-artigo.pdf-sem-separador {
+        padding-top: 0 !important;
+    }
+
+    /*
+    O topo de qualquer caixa fica sem linha, inclusive quando a regra
+    vem do CSS do baralho colado no painel.
+    */
+    body .pdf-flow > :first-child,
+    body .estilo-lei > :first-child,
+    body details.comentario[data-bloco] > .bloco-corpo > :first-child,
+    body .pdf-sem-separador {
         border-top: 0 !important;
         margin-top: 0 !important;
-        padding-top: 0 !important;
+    }
+
+    /* Questões no mesmo bloco: uma linha separa uma da outra. */
+    body details.comentario[data-bloco="questao"] .bloco-linha + .bloco-linha {
+        border-top: 1px solid #aaa !important;
+        margin-top: 4px !important;
+        padding-top: 4px !important;
     }
     """
 
@@ -3062,12 +3109,30 @@ def gerar_html_pdf(cartoes, layout_mode='three',
         }
     });
 
-    // O primeiro artigo após cada cabeçalho dispensa o separador superior.
-    document.querySelectorAll('.note-container').forEach(secao => {
-        const primeiroArtigo = secao.querySelector(
-            '.estilo-lei > span.pdf-inicio-artigo'
+    // A incidência (banca) faz parte do dispositivo que começa ali:
+    // a linha separa acima dela, não entre ela e o texto do artigo.
+    document.querySelectorAll(
+        '.estilo-lei > span.pdf-inicio-artigo'
+    ).forEach(el => {
+        const anterior = el.previousElementSibling;
+
+        if (anterior && anterior.classList.contains('incidencia-dispositivo')) {
+            anterior.classList.add('pdf-inicio-artigo');
+            el.classList.remove('pdf-inicio-artigo');
+        }
+    });
+
+    // O primeiro item de cada caixa nunca recebe separador: a linha
+    // separa um item do anterior e uma caixa com um item só não tem o
+    // que separar. As linhas de incidência não contam como item.
+    document.querySelectorAll('.estilo-lei, .pdf-flow').forEach(caixa => {
+        const itens = Array.from(caixa.children).filter(el =>
+            !el.classList.contains('incidencia-dispositivo')
         );
-        if (primeiroArtigo) primeiroArtigo.classList.add('pdf-primeiro-artigo');
+
+        if (itens.length) {
+            itens[0].classList.add('pdf-sem-separador');
+        }
     });
 
     document.querySelectorAll(
