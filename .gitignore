@@ -1,6 +1,8 @@
 .venv/
 __pycache__/
-tmp/
-*.docx
-##LEIS/
-output/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.pdf
+*.html
+!GUIA.md
